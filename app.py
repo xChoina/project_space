@@ -91,6 +91,8 @@ tab_3d, tab_2d, tab_2d_gwiazdy = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D
 #3D_układ_słoneczny
 with tab_3d:
     st.subheader("Trójwymiarowy model orbit")
+
+
     fig_3d = go.Figure()
 
 
@@ -143,7 +145,7 @@ with tab_3d:
     paper_bgcolor = 'black', font=dict(color='white'), margin=dict(l=0,r=0,b=0,t=0)
 )
 
-    st.plotly_chart(fig_3d, use_container_width=True,key="wykres_3d")
+    st.plotly_chart(fig_3d, use_container_width=True,config={'scrollZoom': True},key="wykres_3d")
 czas_lokalny = t.utc_datetime().astimezone()
 #2D_mapa_nieba
 with tab_2d:
@@ -174,6 +176,7 @@ with tab_2d:
                 hovertemplate=f'<b>{distance.au:.2f} AU<b><extra></extra>'
             ))
     fig_2d.update_layout(
+        dragmode='pan',
         polar=dict(
             radialaxis=dict(range=[0,90], tickvals=[0, 30, 60, 90], ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
             angularaxis=dict(direction="clockwise", rotation=90),
@@ -222,11 +225,11 @@ with tab_2d_gwiazdy:
     ))
 
     fig_2d_gwiazdy.update_layout(
+        dragmode='pan',
         polar=dict(
-            radialaxis=dict(range=[0, 90], tickvals=[0, 30, 60, 90],
-                            ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
+            radialaxis=dict(range=[0, 90], tickvals=[0, 30, 60, 90],ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
             angularaxis=dict(direction="clockwise", rotation=90),
-            bgcolor='black'
+            bgcolor='black',
         ),
         paper_bgcolor='black', font=dict(color='white'), height=600
     )
