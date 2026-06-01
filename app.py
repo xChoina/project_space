@@ -319,7 +319,7 @@ with tab_2d_gwiazdy:
         roz = iss-(wgs84.latlon(latidue,longitude))
         topcentr = roz.at(t)
         alt_iss, az_iss, distance_iss = topcentr.altaz()
-        if alt_iss.degrees < 0:
+        if alt_iss.degrees > 0:
             fig_2d_gwiazdy.add_trace(go.Scatterpolar(
                 r=[90-alt_iss.degrees],
                 theta=[az_iss.degrees],
@@ -336,6 +336,10 @@ with tab_2d_gwiazdy:
                 ],
                 hovertemplate="%{hovertext}<extra></extra>"
             ))
+        else:
+            st.info(f"🛰️ Radar: ISS jest teraz pod horyzontem względem Twojego miasta (Wysokość: {alt_iss.degrees:.1f}°).")
+    else:
+        st.error("Brak danych")
     fig_2d_gwiazdy.update_layout(
         dragmode='pan',
         polar=dict(
