@@ -66,6 +66,20 @@ else:
 st.sidebar.markdown("---")
 pokaz_kon = st.sidebar.toggle("Pokaż linie konstelacji", value=True)
 
+@st.cache_resource(ttl=3600)
+def pobierz_iss():
+    url = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle'
+    try:
+        satel = load.tle_file(url)
+        for sat in satel:
+            if 'ISS' in sat.name:
+                return sat
+    except Exception:
+        pass
+    return None
+iss = pobierz_iss()
+
+
 @st.cache_data
 def zaladuj_gwiazdy():
     with load.open(hipparcos.URL) as f:
@@ -159,8 +173,6 @@ czas_lokalny = t.utc_datetime().astimezone()
 #2D_mapa_nieba
 with tab_2d:
     st.subheader(f"Mapa nieba czasu lokalnego: ({czas_lokalny.strftime('%Y-%m-%d %H:%M')} UTC)")
-    kol_mapa, kol_tab = go.Figure(), None
-    col1, col2 = st.columns([2,1])
     latidue = lat
     longitude = lon
     obs = earth + wgs84.latlon(latidue, longitude)
@@ -182,8 +194,8 @@ with tab_2d:
             dist_km = dist_au*149597871
             dane_tabela.append({
                 "Obiekt": name,
-                "Dystans(AU)": f"{dist_au:.4f}",
-                "Dystans (km)": f"{dist_km:.0f}"
+                "Dystans(AU)": f"{dist_au:.4f} AU",
+                "Dystans (km)": f"{dist_km:.0f} km"
             })
             fig_2d.add_trace(go.Scatterpolar(
                 r=[90 - alt.degrees],
@@ -204,12 +216,10 @@ with tab_2d:
         ),
         paper_bgcolor='black',font=dict(color='white'),height=600
     )
-    with col1:
-        if widoczne == 0:
-            st.warning("Brak obiektów widocznych nad tobą")
-        else:
-            st.plotly_chart(fig_2d, use_container_width=True, key="wykres_2d")
-    with col2:
+    if widoczne == 0:
+        st.warning("Brak obiektów widocznych nad tobą")
+    else:
+        st.plotly_chart(fig_2d, use_container_width=True, key="wykres_2d")
         st.markdown("Odległość od Ziemi")
         df_odl = pd.DataFrame(dane_tabela)
         st.dataframe(df_odl,hide_index=True)
@@ -252,8 +262,8 @@ with tab_2d_gwiazdy:
         mode = 'markers+text',
         text = teksty_gwiazd,
         textposition = 'top center',
-        textfont = dict(color='yellow', size=10),
-        marker=dict(size=rozmiary_gwiazd, color=kolor_gwiazd, opacity=0.6),
+        textfont = dict(color='yellow', size=7),
+        marker=dict(size=4, color=kolor_gwiazd, opacity=0.6),
         name='Gwiazdy',
         hovertext=pelne_info_gwiazd,
         hovertemplate="%{hovertext}<extra></extra>"
@@ -305,6 +315,27 @@ with tab_2d_gwiazdy:
                         showlegend=False,
                         hoverinfo='skip'
                     ))
+    if iss is not None:
+        roz = iss-(wgs84.latlon(latidue,longitude))
+        topcentr = roz.at(t)
+        alt_iss, az_iss, distance_iss = topcentr.altaz()
+        if alt_iss.degrees > 0:
+            fig_2d_gwiazdy.add_trace(go.Scatterpolar(
+                r=[90-alt_iss.degrees],
+                theta=[az_iss.degrees],
+                mode='markers+text',
+                text=["ISS"],
+                textposition='top center',
+                textfont = dict(color='cyan', size = 14),
+                marker=dict(size=15, color='cyan', symbol='diamond'),
+                name="ISS",
+                hovertext =[
+                    f"<b>Międzynarodowa Stacja Kosmiczna</b><br>"
+                    f"Wysokość: {alt_iss.degrees:.1f}°<br>"
+                    f"Dystans: {distance_iss.km:.0f} km"
+                ],
+                hovertemplate="%{hovertext}<extra></extra>"
+            ))
     fig_2d_gwiazdy.update_layout(
         dragmode='pan',
         polar=dict(
