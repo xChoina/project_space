@@ -74,8 +74,8 @@ def pobierz_iss():
         for sat in satel:
             if 'ISS' in sat.name:
                 return sat
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(e)
     return None
 iss = pobierz_iss()
 
@@ -319,7 +319,7 @@ with tab_2d_gwiazdy:
         roz = iss-(wgs84.latlon(latidue,longitude))
         topcentr = roz.at(t)
         alt_iss, az_iss, distance_iss = topcentr.altaz()
-        if alt_iss.degrees > 0:
+        if alt_iss.degrees < 0:
             fig_2d_gwiazdy.add_trace(go.Scatterpolar(
                 r=[90-alt_iss.degrees],
                 theta=[az_iss.degrees],
