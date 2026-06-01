@@ -336,10 +336,6 @@ with tab_2d_gwiazdy:
                 ],
                 hovertemplate="%{hovertext}<extra></extra>"
             ))
-        else:
-            st.info(f"🛰️ Radar: ISS jest teraz pod horyzontem względem Twojego miasta (Wysokość: {alt_iss.degrees:.1f}°).")
-    else:
-        st.error("Brak danych")
     fig_2d_gwiazdy.update_layout(
         dragmode='pan',
         polar=dict(
