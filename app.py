@@ -8,7 +8,6 @@ import sqlite3
 from skyfield.api import load, wgs84, Star
 from skyfield.data import hipparcos
 
-from mapa_nieba_2d import widoczne_obiekty
 
 st.set_page_config(page_title="CosmoApp", layout="wide")
 st.title("Kosmo")
