@@ -66,20 +66,6 @@ else:
 st.sidebar.markdown("---")
 pokaz_kon = st.sidebar.toggle("Pokaż linie konstelacji", value=True)
 
-@st.cache_resource(ttl=3600)
-def pobierz_iss():
-    url = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle'
-    try:
-        satel = load.tle_file(url)
-        for sat in satel:
-            if 'ISS' in sat.name:
-                return sat
-    except Exception as e:
-        st.error(e)
-    return None
-iss = pobierz_iss()
-
-
 @st.cache_data
 def zaladuj_gwiazdy():
     with load.open(hipparcos.URL) as f:
@@ -315,27 +301,7 @@ with tab_2d_gwiazdy:
                         showlegend=False,
                         hoverinfo='skip'
                     ))
-    if iss is not None:
-        roz = iss-(wgs84.latlon(latidue,longitude))
-        topcentr = roz.at(t)
-        alt_iss, az_iss, distance_iss = topcentr.altaz()
-        if alt_iss.degrees > 0:
-            fig_2d_gwiazdy.add_trace(go.Scatterpolar(
-                r=[90-alt_iss.degrees],
-                theta=[az_iss.degrees],
-                mode='markers+text',
-                text=["ISS"],
-                textposition='top center',
-                textfont = dict(color='cyan', size = 14),
-                marker=dict(size=15, color='cyan', symbol='diamond'),
-                name="ISS",
-                hovertext =[
-                    f"<b>Międzynarodowa Stacja Kosmiczna</b><br>"
-                    f"Wysokość: {alt_iss.degrees:.1f}°<br>"
-                    f"Dystans: {distance_iss.km:.0f} km"
-                ],
-                hovertemplate="%{hovertext}<extra></extra>"
-            ))
+
     fig_2d_gwiazdy.update_layout(
         dragmode='pan',
         polar=dict(
