@@ -8,6 +8,9 @@ import sqlite3
 from skyfield.api import load, wgs84, Star
 from skyfield.data import hipparcos
 
+from mapa_nieba_2d import widoczne_obiekty
+
+st.set_page_config(page_title="CosmoApp", layout="wide")
 st.title("Kosmo")
 @st.cache_data
 def pobierz_dane_z_bazy():
@@ -57,11 +60,7 @@ def pobierz_zachmurzenie(lat,lon):
     except:
         return None
 chmury = pobierz_zachmurzenie(lat, lon)
-st.sidebar.header(f"Pogoda {nazwa_miasta}:")
-if chmury is not None:
-    st.sidebar.metric(label="Zachmurzenie", value=f"{chmury}%")
-else:
-    st.sidebar.write("Bezchmurne niebo")
+
 
 st.sidebar.markdown("---")
 pokaz_kon = st.sidebar.toggle("Pokaż linie konstelacji", value=True)
@@ -165,6 +164,7 @@ with tab_2d:
     fig_2d = go.Figure()
     widoczne = 0
 
+
     obiekty_2d = {k: v for k, v in targets.items() if k != 'Ziemia'}
     obiekty_2d['Słońce'] = planets['sun']
     obiekty_2d['Księżyc'] = planets['moon']
@@ -193,14 +193,22 @@ with tab_2d:
                 name=name,
                 hovertemplate=f'<b>{distance.au:.2f} AU<b><extra></extra>'
             ))
+
+    st.markdown("---")
+    kol1, kol2, kol3 = st.columns(3)
+    kol1.metric(label="Obserwatorium", value=nazwa_miasta)
+    kol2.metric(label="Zachmurzenie", value=f"{chmury}%" if chmury is not None else "Brak danych")
+    kol3.metric(label="Widoczne obiekty", value=widoczne)
+    st.markdown("---")
+
     fig_2d.update_layout(
         dragmode='pan',
         polar=dict(
             radialaxis=dict(range=[0,90], tickvals=[0, 30, 60, 90], ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
             angularaxis=dict(direction="clockwise", rotation=90),
-            bgcolor='black'
+            bgcolor='rgba(0,0,0,0)'
         ),
-        paper_bgcolor='black',font=dict(color='white'),height=600
+        paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'),height=600
     )
     if widoczne == 0:
         st.warning("Brak obiektów widocznych nad tobą")
@@ -226,6 +234,13 @@ with tab_2d_gwiazdy:
     az_widoczne = az_g.degrees[maska_widocznosci]
     mag_widoczne = df_gwiazdy['magnitude'].values[maska_widocznosci]
     widoczne_hip = df_gwiazdy.index.values[maska_widocznosci]
+
+    st.markdown("---")
+    kol1, kol2, kol3 = st.columns(3)
+    kol1.metric(label="Obserwatorium", value=nazwa_miasta)
+    kol2.metric(label="Zachmurzenie", value=f"{chmury}%" if chmury is not None else "Brak danych")
+    kol3.metric(label="Widoczne obiekty", value=len(widoczne_hip))
+    st.markdown("---")
 
     r_gwiazd = (90-alt_widoczne).tolist()
     theta_gwiazd = az_widoczne.tolist()
@@ -307,24 +322,32 @@ with tab_2d_gwiazdy:
         polar=dict(
             radialaxis=dict(range=[0, 90], tickvals=[0, 30, 60, 90],ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
             angularaxis=dict(direction="clockwise", rotation=90),
-            bgcolor='black',
+            bgcolor='rgba(0,0,0,0)',
         ),
-        paper_bgcolor='black', font=dict(color='white'), height=600
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'), height=700
     )
     st.plotly_chart(fig_2d_gwiazdy,use_container_width=True, key="wykres_2d_gwiazdy")
     st.markdown("---")
     st.markdown("Status konstelacji na niebie")
+    licz_g = 0
     for nazwa_kon, numer_hip in konstelacje.items():
         sklad_gwiazd = []
-        widoczne_cale = True
+        czy_widoczne = False
 
         for hip in numer_hip:
             nazwa_g = nazwy_gwiazd.get(hip, f"HIP {hip}")
             if hip in widoczne_hip:
                 sklad_gwiazd.append(f"**{nazwa_g}**")
+                czy_widoczne = True
             else:
                 sklad_gwiazd.append(f"{nazwa_g}")
-                widoczne_cale = False
 
-        st.write(f"**{nazwa_kon}** składa się z gwiazd: ")
-        st.caption(", ".join(sklad_gwiazd))
+        if czy_widoczne:
+            st.write(f"**{nazwa_kon}** składa się z gwiazd: ")
+            st.caption(", ".join(sklad_gwiazd))
+            licz_g += 1
+
+    if licz_g == 0:
+        st.info("W tym momencie nie ma żadnej konstelacji z bazy")
+    st.write(f"**{nazwa_kon}** składa się z gwiazd: ")
+    st.caption(", ".join(sklad_gwiazd))
