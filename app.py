@@ -5,6 +5,7 @@ import numpy as np
 import requests
 import pandas as pd
 import sqlite3
+
 from skyfield.api import load, wgs84, Star
 from skyfield.data import hipparcos
 
@@ -18,6 +19,7 @@ def pobierz_dane_z_bazy():
     df_planety = pd.read_sql_query("SELECT * FROM Planety", conn, index_col='nazwa')
     df_gwiazdy = pd.read_sql_query("SELECT * FROM Gwiazdy", conn, index_col='hip_id')
     df_konst = pd.read_sql_query("SELECT * FROM Konstelacje ORDER BY nazwa, kolejnosc", conn)
+    df_ksiezyce = pd.read_sql_query("SELECT * FROM Ksiezyce", conn, index_col='nazwa')
     conn.close()
     kolory = df_planety['kolor'].to_dict()
     rozmiary = df_planety['rozmiar'].to_dict()
@@ -28,9 +30,9 @@ def pobierz_dane_z_bazy():
     for nazwa, grupa in df_konst.groupby('nazwa'):
         konstelacje[nazwa] = grupa['hip_id'].tolist()
 
-    return kolory, rozmiary, okresy, nazwy_gwiazd, konstelacje
+    return kolory, rozmiary, okresy, nazwy_gwiazd, konstelacje, df_ksiezyce
 
-kolor_planet, rozmiar_planet, okres_planet, nazwy_gwiazd, konstelacje = pobierz_dane_z_bazy()
+kolor_planet, rozmiar_planet, okres_planet, nazwy_gwiazd, konstelacje, ksiezyce = pobierz_dane_z_bazy()
 #wyszukanie lokalizacji
 st.sidebar.header("Twoja lokalizacja")
 wpisane_miasto = st.sidebar.text_input("Wpisz miasto:", "Warszawa")
@@ -75,10 +77,11 @@ df_gwiazdy = zaladuj_gwiazdy()
 @st.cache_resource
 def zaladuj_dane():
     planets = load('de421.bsp')
+    jupiter_system = load('jup365.bsp')
     ts = load.timescale()
-    return planets, ts
+    return planets, jupiter_system ,ts
 
-planets,ts = zaladuj_dane()
+planets, jupiter_system ,ts = zaladuj_dane()
 sun = planets['sun']
 earth = planets['earth']
 t=ts.now()
@@ -94,7 +97,7 @@ targets = {
     'Pluton': planets['pluto barycenter']
 }
 
-tab_3d, tab_2d, tab_2d_gwiazdy = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D", "Mapa nieba 2D - Gwiazdy"])
+tab_3d, tab_2d, tab_2d_gwiazdy, tab_3d_jupiter = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D", "Mapa nieba 2D - Gwiazdy", "Układ Jowisza 3D"])
 #3D_układ_słoneczny
 with tab_3d:
     st.subheader("Trójwymiarowy model orbit")
@@ -328,25 +331,74 @@ with tab_2d_gwiazdy:
     st.plotly_chart(fig_2d_gwiazdy,use_container_width=True, key="wykres_2d_gwiazdy")
     st.markdown("---")
     st.markdown("Status konstelacji na niebie")
+    wid_zestaw = set(int(hip) for hip in widoczne_hip)
+    wypisane_kon = set()
     licz_g = 0
     for nazwa_kon, numer_hip in konstelacje.items():
-        sklad_gwiazd = []
-        czy_widoczne = False
-
-        for hip in numer_hip:
-            nazwa_g = nazwy_gwiazd.get(hip, f"HIP {hip}")
-            if hip in widoczne_hip:
+        czysta_nazwa = str(nazwa_kon).strip()
+        czy_cala_wid = all(int(hip) in wid_zestaw for hip in numer_hip)
+        if czy_cala_wid and czysta_nazwa not in wypisane_kon:
+            sklad_gwiazd= []
+            for hip in numer_hip:
+                nazwa_g = nazwy_gwiazd.get(hip, f"HIP {hip}")
                 sklad_gwiazd.append(f"**{nazwa_g}**")
-                czy_widoczne = True
-            else:
-                sklad_gwiazd.append(f"{nazwa_g}")
 
-        if czy_widoczne:
-            st.write(f"**{nazwa_kon}** składa się z gwiazd: ")
-            st.caption(", ".join(sklad_gwiazd))
+            unikalne_g = list(dict.fromkeys(sklad_gwiazd))
+            st.write(f"**{czysta_nazwa}**:")
+            st.caption(", ".join(unikalne_g))
+            wypisane_kon.add(czysta_nazwa)
             licz_g += 1
 
     if licz_g == 0:
         st.info("W tym momencie nie ma żadnej konstelacji z bazy")
-    st.write(f"**{nazwa_kon}** składa się z gwiazd: ")
-    st.caption(", ".join(sklad_gwiazd))
+
+with tab_3d_jupiter:
+    st.subheader("Model 3D: JOWISZ")
+    fig_jowisz = go.Figure()
+    jupiter = jupiter_system['jupiter']
+
+    fig_jowisz.add_trace(go.Scatter3d(
+        x=[0],y=[0],z=[0],
+        mode='markers',
+        marker=dict(size=25, color='orange', symbol='circle'),
+        name='Jowisz'
+    ))
+    ksiezyce_j = ksiezyce[ksiezyce['planeta']=='Jowisz']
+    dt = t.utc_datetime()
+    for name, wiersz in ksiezyce_j.iterrows():
+        klucz= wiersz['klucz_bsp']
+        color = wiersz['kolor']
+        period = wiersz['okres']
+        moon = jupiter_system[klucz]
+        poz_ksiezyca = jupiter.at(t).observe(moon)
+        x,y,z = poz_ksiezyca.position.km / 1000
+        fig_jowisz.add_trace(go.Scatter3d(
+            x=[x],y=[y],z=[z],
+            mode='markers',
+            marker=dict(size=8,color=color),
+            name=name,
+            hovertemplate = f"<b>{name}</b><br>"
+                          f"X: {x:.0f} tys. km<br>"
+                          f"Y: {y:.0f} tys. km<extra></extra>"
+        ))
+        kroki_czasowe_j = np.linspace(0,period,100)
+        t_orbit_j = ts.utc(dt.year,dt.month,dt.day, dt.hour + (kroki_czasowe_j * 24))
+        sciezka_j = jupiter.at(t_orbit_j).observe(moon)
+        ox,oy,oz = sciezka_j.position.km/1000
+
+        fig_jowisz.add_trace(go.Scatter3d(
+            x=ox,y=oy,z=oz,
+            mode='lines',
+            line=dict(color=color,dash='dot',width=2),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+    fig_jowisz.update_layout(
+        scene=dict(xaxis=dict(visible=False),yaxis=dict(visible=False),zaxis=dict(visible=False),
+                   bgcolor='rgba(0,0,0,0)',aspectmode='data'
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'), margin=dict(l=0,r=0,b=0,t=0), height=600
+    )
+    st.plotly_chart(fig_jowisz,use_container_width=True)
