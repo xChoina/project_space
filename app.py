@@ -12,6 +12,15 @@ from skyfield.data import hipparcos
 
 st.set_page_config(page_title="CosmoApp", layout="wide")
 st.title("Kosmo")
+hide_streamlit_style = """
+    <style>
+    header {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display: none;}
+    </style>
+    """
+st.markdown(hide_streamlit_style,unsafe_allow_html=True)
 @st.cache_data
 def pobierz_dane_z_bazy():
     conn = sqlite3.connect('kosmos.db')
@@ -265,8 +274,8 @@ with tab_2d_gwiazdy:
         mode = 'markers+text',
         text = teksty_gwiazd,
         textposition = 'top center',
-        textfont = dict(color='yellow', size=7),
-        marker=dict(size=4, color=kolor_gwiazd, opacity=0.6),
+        textfont = dict(color='#FFFFFF', size=8),
+        marker=dict(size=rozmiary_gwiazd, color=kolor_gwiazd, opacity=0.8, line=dict(width=0.5, color='black')),
         name='Gwiazdy',
         hovertext=pelne_info_gwiazd,
         hovertemplate="%{hovertext}<extra></extra>"
