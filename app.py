@@ -5,6 +5,7 @@ import numpy as np
 import requests
 import pandas as pd
 import sqlite3
+import json
 
 from skyfield.api import load, wgs84, Star
 from skyfield.data import hipparcos
@@ -39,9 +40,9 @@ def pobierz_dane_z_bazy():
     for nazwa, grupa in df_konst.groupby('nazwa'):
         konstelacje[nazwa] = grupa['hip_id'].tolist()
 
-    return kolory, rozmiary, okresy, nazwy_gwiazd, konstelacje, df_ksiezyce
+    return kolory, rozmiary, okresy, nazwy_gwiazd, konstelacje, df_ksiezyce, df_planety
 
-kolor_planet, rozmiar_planet, okres_planet, nazwy_gwiazd, konstelacje, ksiezyce = pobierz_dane_z_bazy()
+kolor_planet, rozmiar_planet, okres_planet, nazwy_gwiazd, konstelacje, ksiezyce, df_planety = pobierz_dane_z_bazy()
 #wyszukanie lokalizacji
 st.sidebar.header("Twoja lokalizacja")
 wpisane_miasto = st.sidebar.text_input("Wpisz miasto:", "Warszawa")
@@ -105,6 +106,116 @@ targets = {
     'Neptun': planets['neptune barycenter'],
     'Pluton': planets['pluto barycenter']
 }
+
+def generuj_widok_planeta(nazwa_planety,klucz_gl_ciala,system_danych, promien_km, paleta_kolrow, metryki, opis_tekst):
+    all_ks = ksiezyce[ksiezyce['planeta'] == nazwa_planety]
+    dom_ks = all_ks.head(4).index.tolist() if not all_ks.empty else []
+    wybrane_ks = st.multiselect(
+        f"Wybierz księżyce do wyświetlenia na modelu 3D:",
+        options=all_ks.index.tolist(),default = dom_ks
+    )
+    ksiezyce_flr = all_ks.loc[wybrane_ks]
+    fig = go.Figure()
+    u = np.linspace(0,2*np.pi,60)
+    v = np.linspace(0, np.pi, 60)
+    x_pl = 1.0 * np.outer(np.cos(u),np.sin(v))
+    y_pl = 1.0 * np.outer(np.sin(u),np.sin(v))
+    z_pl = 1.0 * np.outer(np.ones(np.size(u)),np.cos(v))
+    fig.add_trace(go.Surface(
+                  x=x_pl,y=y_pl,z=z_pl, surfacecolor=z_pl, colorscale=paleta_kolrow,showscale=False,name=nazwa_planety, hoverinfo='name'
+    ))
+    dt=t.utc_datetime()
+    planeta = system_danych[klucz_gl_ciala]
+
+    if ksiezyce_flr.empty:
+        max_zas = 5
+    else:
+        max_okr = ksiezyce_flr['okres'].abs().max()
+        if max_okr > 600: max_zas = 350
+        elif max_okr > 200: max_zas = 200
+        else: max_zas = 35
+    for name, wiersz in ksiezyce_flr.iterrows():
+        klucz = wiersz['klucz_bsp']
+        color = wiersz['kolor']
+        period = wiersz['okres']
+
+        try:
+            moon = system_danych[klucz]
+            poz_ksiezyca = planeta.at(t).observe(moon)
+            x = (poz_ksiezyca.position.km[0] / promien_km)
+            y = (poz_ksiezyca.position.km[1] / promien_km)
+            z = (poz_ksiezyca.position.km[2] / promien_km)
+            dystans_r = np.sqrt(x**2 + y**2 + z**2)
+            dystans_km =dystans_r * promien_km
+
+
+            kroki_czasowe = np.linspace(0, abs(period),200)
+            t_orbit = ts.utc(dt.year,dt.month,dt.day, dt.hour + (kroki_czasowe * 24),dt.minute, dt.second)
+            sciezka = planeta.at(t_orbit).observe(moon)
+            ox = sciezka.position.km[0] / promien_km
+            oy = sciezka.position.km[1] / promien_km
+            oz = sciezka.position.km[2] / promien_km
+
+            fig.add_trace(go.Scatter3d(
+                x=ox,y=oy,z=oz,mode='lines',
+                line=dict(color=color,width=2), opacity=0.35,
+                showlegend=False,hoverinfo='skip'
+            ))
+            srednica = wiersz.get('srednica_km',3000)
+            if pd.isna(srednica): srednica = 3000
+            r_ks = (srednica/2) / promien_km
+            u_k = np.linspace(0, 2* np.pi, 20)
+            v_k = np.linspace(0, np.pi, 20)
+            x_k = x + r_ks * np.outer(np.cos(u_k), np.sin(v_k))
+            y_k = y + r_ks * np.outer(np.sin(u_k), np.sin(v_k))
+            z_k = z + r_ks * np.outer(np.ones(np.size(u_k)), np.cos(v_k))
+
+            fig.add_trace(go.Surface(
+                x=x_k,y=y_k,z=z_k,
+                surfacecolor=np.ones_like(z_k),
+                colorscale=[[0,color], [1,color]],
+                showscale=False,
+                name=name,
+                hovertemplate= f"<b>{name}</b><br>Odległość: {dystans_km:.1f} Km<extra></extra>"
+            ))
+
+        except KeyError:
+            continue
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(visible=False, range=[-max_zas, max_zas]),
+            yaxis=dict(visible=False, range=[-max_zas, max_zas]),
+            zaxis=dict(visible=False, range=[-max_zas, max_zas]),
+            bgcolor = 'rgba(0,0,0,0)', aspectmode='cube'
+        ),
+        paper_bgcolor = 'rgba(0,0,0,0)', plot_bgcolor = 'rgba(0,0,0,0)',
+        font=dict(color='white'), margin=dict(l=0,r=0,b=0,t=0), height=600
+    )
+    st.plotly_chart(fig,use_container_width=True,config={'scrollZoom': True},key=f"wykres_3d_{nazwa_planety}")
+
+    st.markdown("---")
+    st.markdown(f"### Karta Fizyczna i Charakterystyka: {nazwa_planety}")
+    k1,k2,k3,k4 = st.columns(4)
+    k1.metric(label=metryki[0][0], value=metryki[0][1])
+    k2.metric(label=metryki[1][0], value=metryki[1][1])
+    k3.metric(label=metryki[2][0], value=metryki[2][1])
+    k4.metric(label=metryki[3][0], value=metryki[3][1])
+    with st.expander(f"Zobacz szczegółowy raport o: {nazwa_planety}"):
+        st.write(opis_tekst)
+    st.markdown("---")
+    st.markdown("### Dane Fizyczne")
+    if not ksiezyce_flr.empty:
+        df_do_pokaz = ksiezyce_flr.copy()
+        df_do_pokaz = df_do_pokaz.rename(columns={
+            'okres': 'Okres obiegu (dni)', 'srednica_km': 'Średnica (km)', 'rok_odkrycia': 'Rok_odkrycia'
+        })
+        kolumny_wid = ['Okres obiegu (dni)']
+        if 'Średnica (km)' in df_do_pokaz.columns: kolumny_wid.append('Średnica (km)')
+        if 'Rok_odkrycia' in df_do_pokaz.columns: kolumny_wid.append('Rok odkrycia')
+        st.dataframe(df_do_pokaz[kolumny_wid], use_container_width=True)
+    else:
+        st.warning("Zaznacz chociaż 1 księzyc")
+
 
 tab_3d, tab_2d, tab_2d_gwiazdy, tab_3d_jupiter = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D", "Mapa nieba 2D - Gwiazdy", "Układ Jowisza 3D"])
 #3D_układ_słoneczny
@@ -363,51 +474,21 @@ with tab_2d_gwiazdy:
 
 with tab_3d_jupiter:
     st.subheader("Model 3D: JOWISZ")
-    fig_jowisz = go.Figure()
-    jupiter = jupiter_system['jupiter']
+    dane_jowisz = df_planety.loc['Jowisz']
+    kolory_baza = json.loads(dane_jowisz['kolory_3d']) if pd.notna(dane_jowisz['kolory_3d']) else 'orange'
 
-    fig_jowisz.add_trace(go.Scatter3d(
-        x=[0],y=[0],z=[0],
-        mode='markers',
-        marker=dict(size=25, color='orange', symbol='circle'),
-        name='Jowisz'
-    ))
-    ksiezyce_j = ksiezyce[ksiezyce['planeta']=='Jowisz']
-    dt = t.utc_datetime()
-    for name, wiersz in ksiezyce_j.iterrows():
-        klucz= wiersz['klucz_bsp']
-        color = wiersz['kolor']
-        period = wiersz['okres']
-        moon = jupiter_system[klucz]
-        poz_ksiezyca = jupiter.at(t).observe(moon)
-        x,y,z = poz_ksiezyca.position.km / 1000
-        fig_jowisz.add_trace(go.Scatter3d(
-            x=[x],y=[y],z=[z],
-            mode='markers',
-            marker=dict(size=8,color=color),
-            name=name,
-            hovertemplate = f"<b>{name}</b><br>"
-                          f"X: {x:.0f} tys. km<br>"
-                          f"Y: {y:.0f} tys. km<extra></extra>"
-        ))
-        kroki_czasowe_j = np.linspace(0,period,100)
-        t_orbit_j = ts.utc(dt.year,dt.month,dt.day, dt.hour + (kroki_czasowe_j * 24))
-        sciezka_j = jupiter.at(t_orbit_j).observe(moon)
-        ox,oy,oz = sciezka_j.position.km/1000
-
-        fig_jowisz.add_trace(go.Scatter3d(
-            x=ox,y=oy,z=oz,
-            mode='lines',
-            line=dict(color=color,dash='dot',width=2),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-    fig_jowisz.update_layout(
-        scene=dict(xaxis=dict(visible=False),yaxis=dict(visible=False),zaxis=dict(visible=False),
-                   bgcolor='rgba(0,0,0,0)',aspectmode='data'
-        ),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white'), margin=dict(l=0,r=0,b=0,t=0), height=600
+    metryki_baza =[
+        ("Masa", dane_jowisz['masa']),
+        ("Czas obrotu", dane_jowisz['czas_obrotu']),
+        ("Średnia temp.", dane_jowisz['temp']),
+        ("Wiatry", dane_jowisz['wiatry'])
+    ]
+    generuj_widok_planeta(
+        nazwa_planety="Jowisz",
+        klucz_gl_ciala="jupiter",
+        system_danych=jupiter_system,
+        promien_km=71492,
+        paleta_kolrow=kolory_baza,
+        metryki = metryki_baza,
+        opis_tekst = dane_jowisz['opis']
     )
-    st.plotly_chart(fig_jowisz,use_container_width=True)
