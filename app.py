@@ -1,4 +1,4 @@
-#odpal streamlit run app.py
+#odpal .streamlit run app.py
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
@@ -15,10 +15,18 @@ st.set_page_config(page_title="CosmoApp", layout="wide")
 st.title("Kosmo")
 hide_streamlit_style = """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&display=swap');
+    html,body,[class*="css"]{
+        font-family: 'Space Grotesk', sans-serif;
+    }
     header {visibility: hidden;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display: none;}
+    .js-plotly-plot{
+        border-radius: 10px;
+        overflow: hidden;
+    }
     </style>
     """
 st.markdown(hide_streamlit_style,unsafe_allow_html=True)
@@ -73,8 +81,6 @@ def pobierz_zachmurzenie(lat,lon):
 chmury = pobierz_zachmurzenie(lat, lon)
 
 
-st.sidebar.markdown("---")
-pokaz_kon = st.sidebar.toggle("Pokaż linie konstelacji", value=True)
 
 @st.cache_data
 def zaladuj_gwiazdy():
@@ -179,6 +185,17 @@ def generuj_widok_planeta(nazwa_planety,klucz_gl_ciala,system_danych, promien_km
                 hovertemplate= f"<b>{name}</b><br>Odległość: {dystans_km:.1f} Km<extra></extra>"
             ))
 
+            z_napis = z + (r_ks *1.5)
+            fig.add_trace(go.Scatter3d(
+                x=[x], y=[y], z=[z_napis],
+                mode='text',
+                text=[f"<b>{name}</b>"],
+                textposition='top center',
+                textfont=dict(color=color,size=10),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
         except KeyError:
             continue
     fig.update_layout(
@@ -195,11 +212,12 @@ def generuj_widok_planeta(nazwa_planety,klucz_gl_ciala,system_danych, promien_km
 
     st.markdown("---")
     st.markdown(f"### Karta Fizyczna i Charakterystyka: {nazwa_planety}")
-    k1,k2,k3,k4 = st.columns(4)
-    k1.metric(label=metryki[0][0], value=metryki[0][1])
-    k2.metric(label=metryki[1][0], value=metryki[1][1])
-    k3.metric(label=metryki[2][0], value=metryki[2][1])
-    k4.metric(label=metryki[3][0], value=metryki[3][1])
+    with st.container(border=True):
+        k1,k2,k3,k4 = st.columns(4)
+        k1.metric(label=metryki[0][0], value=metryki[0][1])
+        k2.metric(label=metryki[1][0], value=metryki[1][1])
+        k3.metric(label=metryki[2][0], value=metryki[2][1])
+        k4.metric(label=metryki[3][0], value=metryki[3][1])
     with st.expander(f"Zobacz szczegółowy raport o: {nazwa_planety}"):
         st.write(opis_tekst)
     st.markdown("---")
@@ -207,7 +225,7 @@ def generuj_widok_planeta(nazwa_planety,klucz_gl_ciala,system_danych, promien_km
     if not ksiezyce_flr.empty:
         df_do_pokaz = ksiezyce_flr.copy()
         df_do_pokaz = df_do_pokaz.rename(columns={
-            'okres': 'Okres obiegu (dni)', 'srednica_km': 'Średnica (km)', 'rok_odkrycia': 'Rok_odkrycia'
+            'okres': 'Okres obiegu (dni)', 'srednica_km': 'Średnica (km)', 'Rok_odkrycia': 'Rok_odkrycia'
         })
         kolumny_wid = ['Okres obiegu (dni)']
         if 'Średnica (km)' in df_do_pokaz.columns: kolumny_wid.append('Średnica (km)')
@@ -363,6 +381,8 @@ with tab_2d_gwiazdy:
     kol2.metric(label="Zachmurzenie", value=f"{chmury}%" if chmury is not None else "Brak danych")
     kol3.metric(label="Widoczne obiekty", value=len(widoczne_hip))
     st.markdown("---")
+
+    pokaz_kon = st.toggle("Pokaż siatkę konstelacji na niebie", value=True)
 
     r_gwiazd = (90-alt_widoczne).tolist()
     theta_gwiazd = az_widoczne.tolist()
