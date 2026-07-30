@@ -522,7 +522,7 @@ with tab_moon:
 
     st.markdown("---")
     st.markdown("Struktura 3D")
-    @st.cache_data(ttl=86400)
+    @st.cache_data
     def pobierz_texture_moon():
         try:
             from PIL import ImageEnhance
