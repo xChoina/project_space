@@ -10,7 +10,7 @@ import json
 from skyfield.api import load, wgs84, Star
 from skyfield.data import hipparcos
 from skyfield import almanac
-from PIL import Image
+from PIL import Image, ImageEnhance
 from io import BytesIO
 
 
@@ -525,12 +525,8 @@ with tab_moon:
     @st.cache_data(ttl=86400)
     def pobierz_texture_moon():
         try:
-            url = "https://www.solarsystemscope.com/textures/download/2k_moon.jpg"
-            naglowki = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            response = requests.get(url, headers=naglowki)
-
             from PIL import ImageEnhance
-            img = Image.open(BytesIO(response.content)).convert('L')
+            img = Image.open("2k_moon.jpg").convert(L)
 
             # 2. Podkręcamy kontrast o 25%, żeby kratery nabrały głębi
             enhancer = ImageEnhance.Contrast(img)
