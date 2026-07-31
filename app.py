@@ -515,7 +515,7 @@ with tab_moon:
     st.markdown("---")
     with st.container(border=True):
         st.markdown(f"**Dane na czas:** {czas_lokalny.strftime('%Y-%m-%d %H:%M')}")
-        k1,k2,k3 = st.columns(3)
+        k1,k2,k3 = st.columns([4,1,2])
         k1.metric(label = "Aktualna Faza", value=phase_name)
         k2.metric(label = "Oświetlenie Tarczy", value=f"{prcnt_light:.1f}%")
         k3.metric(label = "Odległość od Ziemi", value=f"{odleglosc_km:.0f}km")
