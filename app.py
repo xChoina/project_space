@@ -525,8 +525,8 @@ with tab_moon:
     @st.cache_data
     def pobierz_texture_moon():
         try:
-            from PIL import ImageEnhance
-            img = Image.open("2k_moon.jpg").convert(L)
+            from PIL import Image,ImageEnhance
+            img = Image.open("2k_moon.jpg").convert('L')
 
             # 2. Podkręcamy kontrast o 25%, żeby kratery nabrały głębi
             enhancer = ImageEnhance.Contrast(img)
