@@ -238,7 +238,7 @@ def generuj_widok_planeta(nazwa_planety,klucz_gl_ciala,system_danych, promien_km
         st.warning("Zaznacz chociaż 1 księzyc")
 
 
-tab_3d, tab_2d, tab_2d_gwiazdy, tab_moon, tab_3d_jupiter = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D", "Mapa nieba 2D - Gwiazdy", "Księżycowa Strefa" ,"Układ Jowisza 3D"])
+tab_3d, tab_2d, tab_2d_gwiazdy, tab_kon ,tab_moon, tab_3d_jupiter = st.tabs(["Układ Słoneczny 3D", "Mapa nieba 2D", "Mapa nieba 2D - Gwiazdy", "Koniunkcja" ,"Księżycowa Strefa" ,"Układ Jowisza 3D"])
 #3D_układ_słoneczny
 with tab_3d:
     st.subheader("Trójwymiarowy model orbit")
@@ -495,59 +495,181 @@ with tab_2d_gwiazdy:
     if licz_g == 0:
         st.info("W tym momencie nie ma żadnej konstelacji z bazy")
 
+with tab_kon:
+    st.header("Koniunkcje kalendarz")
+    st.write("System automatycznie skanuje przyszłe pozycje orbit")
+    @st.cache_data(ttl=86400)
+    def pobierz_najblizsze_koniunkcje():
+        from skyfield.api import load
+        import datetime
+        import numpy as np
+        ts = load.timescale()
+        planets = load('de421.bsp')
+        earth = planets['earth']
+        obiekty = {
+            "Księżyc": ('moon', planets['moon']),
+            "Merkury": ('mercury barycenter', planets['mercury barycenter']),
+            "Wenus": ('venus barycenter', planets['venus barycenter']),
+            "Mars": ('mars barycenter', planets['mars barycenter']),
+            "Jowisz": ('jupiter barycenter', planets['jupiter barycenter']),
+            "Saturn": ('saturn barycenter', planets['saturn barycenter'])
+        }
+        nazwy = list(obiekty.keys())
+        klucze = [v[0] for v in obiekty.values()]
+        ciala = [v[1] for v in obiekty.values()]
+        now_time = datetime.datetime.now(datetime.timezone.utc)
+        wektor_dni = ts.from_datetimes([now_time + datetime.timedelta(days=i) for i in range(180)])
+
+        znal = []
+        for i in range(len(ciala)):
+            for j in range(i+1, len(ciala)):
+                c1 = ciala[i]
+                c2 = ciala[j]
+                obs = earth.at(wektor_dni)
+                sep = obs.observe(c1).apparent().separation_from(obs.observe(c2).apparent()).degrees
+                for k in range(1, len(sep)-1):
+                    if sep[k]< sep[k-1] and sep[k] < sep[k+1] and sep[k] < 4.0:
+                        dzien_kon = now_time + datetime.timedelta(days=k)
+                        wektor_godzin = ts.from_datetimes([dzien_kon + datetime.timedelta(hours=h) for h in range(-24, 25)])
+                        obs_dok = earth.at(wektor_godzin)
+                        sep_godz = obs_dok.observe(c1).apparent().separation_from(obs_dok.observe(c2).apparent()).degrees
+                        id_min = np.argmin(sep_godz)
+                        dokl_data = dzien_kon + datetime.timedelta(hours=int(id_min - 24))
+                        min_dys = sep_godz[id_min]
+
+                        if dokl_data > now_time:
+                            znal.append({
+                                "Zjawisko": f"{nazwy[i]} oraz {nazwy[j]}",
+                                "Klucz1": klucze[i],
+                                "Klucz2": klucze[j],
+                                'Data': dokl_data,
+                                'Dystans': min_dys
+                            })
+        znal.sort(key=lambda x: x["Data"])
+        return znal[:10]
+    with st.spinner("Skanowanie orbit"):
+        lista_koniun = pobierz_najblizsze_koniunkcje()
+    if lista_koniun:
+        obs_lokal = earth + wgs84.latlon(lat,lon)
+        for kon in lista_koniun:
+            # 1. Wyliczamy lokalne warunki widoczności
+            t_zjawiska = ts.from_datetime(kon['Data'])
+
+            c1_obj = planets[kon['Klucz1']]
+            c2_obj = planets[kon['Klucz2']]
+
+            # Pobieramy wysokość ciał i słońca
+            alt1, _, _ = obs_lokal.at(t_zjawiska).observe(c1_obj).apparent().altaz()
+            alt_sun, _, _ = obs_lokal.at(t_zjawiska).observe(sun).apparent().altaz()
+
+            wysokosc_deg = alt1.degrees
+
+            # 2. Oceniamy sens obserwacji
+            if wysokosc_deg < 0:
+                status_wid = "🔴 **Niewidoczne** (schowane pod horyzontem)"
+            elif alt_sun.degrees > -5:
+                status_wid = "🟠 **Bardzo trudne** (środek dnia lub jasny świt/zmierzch)"
+            elif wysokosc_deg < 12:
+                status_wid = "🟡 **Nisko na niebie** (potrzebny płaski horyzont np. łąka, pole)"
+            else:
+                status_wid = "🟢 **Świetne warunki** (ciemne niebo i odpowiednia wysokość)"
+
+            # 3. Rysujemy piękny i użyteczny interfejs
+            with st.container(border=True):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                col1.markdown(f"#### {kon['Zjawisko']}")
+
+                # Informacja z poradnikiem dla obserwatora
+                if kon['Dystans'] < 1.0:
+                    col1.success(
+                        f"Zbliżenie na {kon['Dystans']:.2f}°. Obydwa obiekty zmieszczą się obok siebie w jednym kadrze teleskopu!")
+                else:
+                    col1.info(
+                        f"Zbliżenie na {kon['Dystans']:.2f}°. Super widok gołym okiem lub przez prostą lornetkę.")
+
+                # Dodajemy wygenerowany z Twojego miasta status
+                col1.caption(f"Widoczność z {nazwa_miasta}: {status_wid} (Wysokość: {wysokosc_deg:.0f}°)")
+
+                czas_lok = kon['Data'].astimezone()
+
+                col2.metric(
+                    label="Data maksimum (Twój czas)",
+                    value=czas_lok.strftime("%Y-%m-%d"),
+                    delta=czas_lok.strftime("%H:%M"),
+                    delta_color="off"
+                )
+                col3.metric(
+                    label="Odległość",
+                    value=f"{kon['Dystans']:.2f}°"
+                )
+        else:
+            st.info("Brak w ciągu najbliższego pół roku")
+
+
 with tab_moon:
     st.subheader("Moon")
     moon = planets['moon']
     prcnt_light = almanac.fraction_illuminated(planets, 'moon', t) * 100
     phase_degree = almanac.moon_phase(planets, t).degrees
 
-    if phase_degree < 5 or phase_degree > 355: phase_name = "Nów 🌑"
-    elif phase_degree < 85: phase_name = "Sierp rosnący 🌒"
-    elif phase_degree < 95: phase_name = "Pierwsza kwadra 🌓"
-    elif phase_degree < 175: phase_name = "Księżyc garbaty rosnący 🌔"
-    elif phase_degree < 185: phase_name = "Pełnia 🌕"
-    elif phase_degree < 265: phase_name = "Księżyc garbaty malejący 🌖"
-    elif phase_degree < 275: phase_name = "Trzecia kwadra 🌗"
-    else: phase_name = "Sierp malejący 🌘"
+    if phase_degree < 5 or phase_degree > 355:
+        phase_name = "Nów 🌑"
+    elif phase_degree < 85:
+        phase_name = "Sierp rosnący 🌒"
+    elif phase_degree < 95:
+        phase_name = "Pierwsza kwadra 🌓"
+    elif phase_degree < 175:
+        phase_name = "Księżyc garbaty rosnący 🌔"
+    elif phase_degree < 185:
+        phase_name = "Pełnia 🌕"
+    elif phase_degree < 265:
+        phase_name = "Księżyc garbaty malejący 🌖"
+    elif phase_degree < 275:
+        phase_name = "Trzecia kwadra 🌗"
+    else:
+        phase_name = "Sierp malejący 🌘"
 
     odleglosc_km = earth.at(t).observe(moon).distance().km
 
     st.markdown("---")
     with st.container(border=True):
         st.markdown(f"**Dane na czas:** {czas_lokalny.strftime('%Y-%m-%d %H:%M')}")
-        k1,k2,k3 = st.columns([4,1,2])
-        k1.metric(label = "Aktualna Faza", value=phase_name)
-        k2.metric(label = "Oświetlenie Tarczy", value=f"{prcnt_light:.1f}%")
-        k3.metric(label = "Odległość od Ziemi", value=f"{odleglosc_km:.0f}km")
+        k1, k2, k3 = st.columns([4, 1, 2])
+        k1.metric(label="Aktualna Faza", value=phase_name)
+        k2.metric(label="Oświetlenie Tarczy", value=f"{prcnt_light:.1f}%")
+        k3.metric(label="Odległość od Ziemi", value=f"{odleglosc_km:.0f}km")
 
     st.markdown("---")
     st.markdown("Struktura 3D")
+
+
     @st.cache_data
     def pobierz_texture_moon():
         try:
-            from PIL import Image,ImageEnhance
+            from PIL import Image, ImageEnhance
             img = Image.open("2k_moon.jpg").convert('L')
 
-            # 2. Podkręcamy kontrast o 25%, żeby kratery nabrały głębi
             enhancer = ImageEnhance.Contrast(img)
             img = enhancer.enhance(1.25)
             if hasattr(Image, 'Resampling'):
-                img = img.resize((1024,512), Image.Resampling.LANCZOS)
+                img = img.resize((1024, 512), Image.Resampling.LANCZOS)
             else:
-                img = img.resize((1024,512), Image.ANTIALIAS)
+                img = img.resize((1024, 512), Image.ANTIALIAS)
 
-            img =img.transpose(Image.FLIP_TOP_BOTTOM)
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
             return np.array(img)
         except Exception as e:
             return None
+
 
     img_array = pobierz_texture_moon()
     fig_moon = go.Figure()
     r_moon = 1737
 
+    # TYLKO JEDEN BLOK RYSOWANIA MODELU 3D
     if img_array is not None:
         H, W = img_array.shape
-        theta_moon = np.linspace(0, 2*np.pi, W)
+        theta_moon = np.linspace(0, 2 * np.pi, W)
         phi_moon = np.linspace(0.005, np.pi - 0.005, H)
         THETA, PHI = np.meshgrid(theta_moon, phi_moon)
 
@@ -555,61 +677,48 @@ with tab_moon:
         y_m = r_moon * np.sin(PHI) * np.sin(THETA)
         z_m = r_moon * np.cos(PHI)
 
+        pokaz_faze = st.toggle("🌓 Pokaż rzeczywisty cień fazy", value=True)
+
+        # Kopia do operacji matematycznych
+        img_display = img_array.copy().astype(float)
+
+        if pokaz_faze:
+            theta_sun = 2 * np.pi - np.radians(phase_degree)
+            x_sun = np.cos(theta_sun)
+            y_sun = np.sin(theta_sun)
+
+            # Prawo Lamberta - liczymy kąt padania światła dla każdego piksela
+            nasw = (np.sin(PHI) * np.cos(THETA) * x_sun) + (np.sin(PHI) * np.sin(THETA) * y_sun)
+
+            # Wygładzenie przejścia na linii terminatora
+            nasw_ostr= np.clip(nasw*15, 0, 1)
+            jasnosc = 0.15 + (0.85 * nasw_ostr)
+
+            # Aplikujemy cień na teksturę
+            img_display = img_display * jasnosc
+
+        # Dodajemy model na scenę (światło wyłączone, bazujemy na jasności tekstury)
         fig_moon.add_trace(go.Surface(
-        x=x_m,
-        y=y_m,
-        z=z_m,
-        surfacecolor=img_array,
-        colorscale='gray',
-        cmin=0, cmax=255,
-        showscale = False,
-            lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=1.0, fresnel=0.0),
-        ))
-
-    pokaz_faze = st.toggle("Pokaż linie fazy i kierunek Słońca", value=False)
-    if pokaz_faze:
-        theta_sun = 2 * np.pi - np.radians(phase_degree)
-        x_sun = np.cos(theta_sun)
-        y_sun = np.sin(theta_sun)
-        alpha_term = np.linspace(0, 2*np.pi, 120)
-        r_line = r_moon * 1.05
-
-        x_term = r_line * y_sun * np.cos(alpha_term)
-        y_term = r_line * -x_sun * np.cos(alpha_term)
-        z_term = r_line * np.sin(alpha_term)
-
-        fig_moon.add_trace(go.Scatter3d(
-            x=x_term, y=y_term, z=z_term,
-            mode='lines',
-            line=dict(color='red', width=4),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-        r_sun_icon = r_moon * 1.8
-        fig_moon.add_trace(go.Scatter3d(
-            x=[r_sun_icon * x_sun],
-            y=[r_sun_icon * y_sun],
-            z=[0],
-            mode='text',
-            text="Kierunek światła",
-            textfont=dict(color='red', size=16),
-            textposition='middle center',
-            showlegend=False,
-            hoverinfo='skip'
+            x=x_m, y=y_m, z=z_m,
+            surfacecolor=img_display,
+            colorscale='gray',
+            cmin=0, cmax=255,
+            showscale=False,
+            lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=1.0, fresnel=0.0)
         ))
 
     fig_moon.update_layout(
         scene=dict(
-            xaxis = dict(visible=False), yaxis = dict(visible=False), zaxis = dict(visible=False),
-            bgcolor = 'rgba(0,0,0,0)', aspectmode = 'data'
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            bgcolor='rgba(0,0,0,0)', aspectmode='data',
+            camera=dict(eye=dict(x=-2.5, y=0.0, z=0.0),
+                        up=dict(x=0, y=0, z=1))
         ),
-        paper_bgcolor = 'rgba(0,0,0,0)', plot_bgcolor = 'rgba(0,0,0,0)', font=dict(color='white'),
-        margin=dict(l=0, r=0, t=0, b=0), height = 550
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'),
+        margin=dict(l=0, r=0, t=0, b=0), height=550
     )
 
-
     st.plotly_chart(fig_moon, use_container_width=True, config={'scrollZoom': False})
-
 
 
 with tab_3d_jupiter:
