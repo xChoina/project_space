@@ -56,7 +56,9 @@ def pobierz_dane_z_bazy():
 kolor_planet, rozmiar_planet, okres_planet, nazwy_gwiazd, konstelacje, ksiezyce, df_planety = pobierz_dane_z_bazy()
 #wyszukanie lokalizacji
 st.sidebar.header("Twoja lokalizacja")
-wpisane_miasto = st.sidebar.text_input("Wpisz miasto:", "Warszawa")
+location_method = st.sidebar.radio(
+    "Sposób wprowadzenia:", ["Nazwa miasta","Dokładne współrzędne"]
+)
 @st.cache_data(ttl=86400)
 def pobierz_współrzędne(miasto):
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={miasto}&count=1&language=pl&format=json"
@@ -70,9 +72,15 @@ def pobierz_współrzędne(miasto):
     except:
         pass
     return 52.1482, 21.0380, "Warszawa"
-lat, lon , nazwa_miasta = pobierz_współrzędne(wpisane_miasto)
-st.sidebar.success(f" {nazwa_miasta} (Lat: {lat:.2f}, Lon: {lon:.2f})")
+if location_method == "Nazwa miasta":
+    wpisane_miasto = st.sidebar.text_input("Wpisz miasto:", "Warszawa")
+    lat, lon , nazwa_miasta = pobierz_współrzędne(wpisane_miasto)
+else:
+    lat = st.sidebar.number_input("Wpisz szerokość geogr.:",min_value= -90.0,max_value=90.0, value= 52.23, format="%.4f")
+    lon = st.sidebar.number_input("Wpisz długość geogr.: ", min_value=-180.0, max_value=180.0, value= 21.01, format="%.4f")
+    nazwa_miasta = f"Współrzędne własne"
 
+st.sidebar.success(f"Aktywna: {nazwa_miasta} (Lat: {lat:.4f}, Lon: {lon:.4f})")
 @st.cache_data(ttl=1800)
 def pobierz_zachmurzenie(lat,lon):
     try:
@@ -462,11 +470,46 @@ with tab_2d_gwiazdy:
                         hoverinfo='skip'
                     ))
 
+    st.markdown('---')
+
+    c1, c2 = st.columns([2,1])
+    with c1:
+        kierunek = st.radio("Gdzie patrzysz?",["Całe niebo","Północ","Wschód","Południe","Zachód","Zenit"], horizontal=True)
+
+    with c2:
+        st.write("")
+        lezak = st.toggle("Oglądam na leżąco(obrót)")
+    r_zakr= [0,90]
+    kat_sekt = None
+
+    if kierunek == "Północ":
+        kat_sekt = [45,135]
+        r_zakr = [30,90]
+    elif kierunek == "Wschód":
+        kat_sekt = [135,225]
+        r_zakr = [30,90]
+    elif kierunek == "Południe":
+        kat_sekt = [225,315]
+        r_zakr = [30,90]
+    elif kierunek == "Zachód":
+        kat_sekt = [315,405]
+        r_zakr = [30,90]
+    elif kierunek == "Zenit":
+        kat_sekt = [0,360]
+        r_zakr = [0,45]
+
+    base_rot = 90
+    if lezak:
+        base_rot = 270
+
     fig_2d_gwiazdy.update_layout(
         dragmode='pan',
         polar=dict(
-            radialaxis=dict(range=[0, 90], tickvals=[0, 30, 60, 90],ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)']),
-            angularaxis=dict(direction="clockwise", rotation=90),
+            sector = kat_sekt,
+            radialaxis=dict(range=r_zakr, tickvals=[0, 30, 60, 90],ticktext=['90° (Zenit)', '60°', '30°', '0° (Horyzont)'], gridcolor='rgba(255,255,255,0.15)'),
+            angularaxis=dict(direction="counterclockwise", rotation=base_rot, tickvals=[0,45,90,135,180,225, 270, 315],
+                             ticktext=['N','NE','E','SE','S', 'SW', 'W', 'NW'],
+                             gridcolor='rgba(255,255,255,0.15)'),
             bgcolor='rgba(0,0,0,0)',
         ),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'), height=700
